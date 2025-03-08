@@ -1,26 +1,56 @@
-const router = require('express').Router()
-const { Blog } = require('../models')
-const blogFinder = require('../util/middleware').blogFinder
+const express = require('express')
+const router = express.Router()
+const { Blog, User } = require('../models')
+const { blogFinder, tokenExtractor } = require('../util/middleware')
+const { Op } = require('sequelize')
 
 router.get('/', async (req, res) => {
-    const blogs = await Blog.findAll()
-    console.log(JSON.stringify(blogs))
+    const where = {}
+    if (req.query.search) {
+        where[Op.or] = [
+            {
+                title: {
+                    [Op.substring]: req.query.search
+                }
+            },
+            {
+                author: {
+                    [Op.substring]: req.query.search
+                }
+            }
+        ]
+    }
+    const blogs = await Blog.findAll({
+      attributes: { exclude: ['userId'] },
+      include: {
+        model: User,
+        attributes: ['name']
+      },
+      where,
+      order: [
+        ['likes', 'DESC']]
+    })
+  
     res.json(blogs)
-})
+  })
 
-router.post('/', async (req, res) => {
-    const { title, url, author } = req.body;
-    const newBlog = await Blog.create({
-        title,
-        url,
-        author,
-    });
-    res.status(201).json(newBlog);
-})
+router.post('/', tokenExtractor, async (req, res) => {
+    try {
+      const user = await User.findByPk(req.decodedToken.id)
+      const blog = await Blog.create({...req.body, userId: user.id, date: new Date()})
+      res.json(blog)
+    } catch(error) {
+      return res.status(400).json({ error: error.errors[0].message })
+    }
+  })
 
-router.delete('/:id', blogFinder, async (req, res) => {
+router.delete('/:id', blogFinder, tokenExtractor, async (req, res) => {
+    const user = await User.findByPk(req.decodedToken.id)
+    if (req.blog.userId !== user.id) {
+        return res.status(403).json({ error: 'Not your Blog!' })
+    }
     await req.blog.destroy()
-    res.status(204).end()
+    return res.status(200).json({ message: 'Deleted' }) 
 })
 
 router.put('/:id', blogFinder, async (req, res) => {
