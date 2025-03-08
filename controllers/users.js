@@ -29,8 +29,8 @@ router.post('/', async (req, res) => {
 router.put('/:username', async (req, res) => {
   const user = await User.findOne({username: req.params.username})
   if (user) {
-    user.name = req.body.name;
-    await user.save();
+    user.name = req.body.name
+    await user.save()
     res.json(user);
   } else {
     res.status(404).end()
